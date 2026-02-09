@@ -1,0 +1,66 @@
+project_name: Custom DMVSTNet
+seed: 42
+device: cuda
+dataset:
+  time_step: 8
+  patch_size: 7
+  grid_size: 9500
+
+train_split: 0.8
+
+criterion:
+  gamma: 0.1
+  eps: 1.0
+
+model:
+  Local_cnn:
+    num_filters: 4
+    num_cnn_layers: 3
+    kernel_size: 3
+    neighborhood_size: ${dataset.patch_size}
+
+  LSTM:
+    hidden_size: 32
+    num_layers: 2
+    dropout: 0.1
+
+  Line:
+    dimension: 64
+    walk_length: 40
+    walk_num: 10
+    negative: 5
+    batch_size: 100
+    alpha: 0.025
+    order: 2
+
+  demand_embedding_dim: 16
+  temporal_embedding_dim: 8
+  context_embedding_dim: 8
+  num_temporal_features: 4
+  grid_size: ${dataset.grid_size}
+
+train:
+  per_device_train_batch_size: 512
+  per_device_eval_batch_size: 1024
+  num_train_epochs: 300
+  remove_unused_columns: false
+  save_strategy: epoch
+  save_total_limit: 1
+  optim: adamw_torch
+  learning_rate: 5e-4
+  weight_decay: 0.01
+  warmup_ratio: 0.1
+  logging_steps: 500
+  eval_strategy: epoch
+
+  load_best_model_at_end: true
+  metric_for_best_model: loss
+  greater_is_better: false
+  disable_tqdm: false
+  
+callbacks:
+  early_stopping:
+    early_stopping_patience: 3
+
+test:
+  k: 20
