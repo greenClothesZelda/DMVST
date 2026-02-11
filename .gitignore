@@ -9,3 +9,4 @@ data
 __pycache__/
 outputs/
 temp/
+multirun/
