@@ -16,6 +16,7 @@ def test_loop(model, test_dataset, output_dir, device, k):
     test_loader = DataLoader(test_dataset, batch_size=6, shuffle=False, collate_fn=collate_fn)
     all_predictions = []
     all_labels = []
+    valid_mask = []
 
     for batch in test_loader:
         demands = batch['demands'].to(device)
@@ -26,28 +27,33 @@ def test_loop(model, test_dataset, output_dir, device, k):
         outputs = torch.clamp(outputs, min=0.0)
         all_predictions.append(outputs.cpu())
         all_labels.append(labels.cpu())
+        valid_mask.append(batch['valid_mask'].cpu())
     all_predictions = torch.cat(all_predictions, dim=0)
     all_labels = torch.cat(all_labels, dim=0)
+    valid_mask = torch.cat(valid_mask, dim=0)
+    
+    valid_predictions = all_predictions[valid_mask]
+    valid_labels = all_labels[valid_mask]
 
     result = {
-        'labels': all_labels.numpy().tolist(),
-        'predictions': all_predictions.numpy().tolist()
+        'labels': valid_labels.numpy().tolist(),
+        'predictions': valid_predictions.numpy().tolist()
     }
 
-    mae = F.l1_loss(all_predictions, all_labels).item()
-    mape = torch.mean(torch.abs((all_labels - all_predictions) / (all_labels + 1))).item() * 100
+    mae = F.l1_loss(valid_predictions, valid_labels).item()
+    mape = torch.mean(torch.abs((valid_labels - valid_predictions) / (valid_labels + 1))).item() * 100
 
     result_df = pd.DataFrame(result)
     result_df.to_csv(f"{output_dir}/test_results.csv", index=False)
-    visualize_predictions(f"{output_dir}/test_results.csv", num_nodes=test_dataset.dataset.X * test_dataset.dataset.Y, output_dir=output_dir)
+    #visualize_predictions(f"{output_dir}/test_results.csv", num_nodes=test_dataset.dataset.X * test_dataset.dataset.Y, output_dir=output_dir)
 
-    topk_mae, topk_mape = topk_node_loss(all_predictions, all_labels, total_nodes=test_dataset.dataset.X * test_dataset.dataset.Y, k=k)
+    #topk_mae, topk_mape = topk_node_loss(valid_predictions, valid_labels, total_nodes=test_dataset.dataset.X * test_dataset.dataset.Y, k=k)
 
     return {
         'MAE': mae,
         'MAPE': mape,
-        f'Top{k}_MAE': topk_mae,
-        f'Top{k}_MAPE': topk_mape
+        # f'Top{k}_MAE': topk_mae,
+        # f'Top{k}_MAPE': topk_mape
     }
 
 def topk_node_loss(pred, label, total_nodes, k=20):
