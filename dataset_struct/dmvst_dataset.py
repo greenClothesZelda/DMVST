@@ -3,6 +3,7 @@ from torch.utils.data import Dataset
 import pandas as pd
 from pathlib import Path
 import numpy as np
+import json
 
 import torch.nn.functional as F
 
@@ -72,8 +73,25 @@ class DMVSTDataset(Dataset):
         expected_nodes = self.X * self.Y
         log.info(f"Dataset Info: X={self.X}, Y={self.Y}, Total Nodes(Max ID)={expected_nodes}")
         
-
-
+        #유효 격자 체크
+        self.valid_mask = torch.zeros(self.X, self.Y, dtype=torch.bool)
+        
+        with open(root_path / 'graph_data.json', 'r') as f:
+            graph_data = json.load(f)
+        meta_data = graph_data['nodes']
+        for node in meta_data:
+            #print(f'keys: {node.keys()}')
+            cells = node.get('cells', [])
+            for cell in cells:
+                x, y = cell
+                if 0 <= x < self.X and 0 <= y < self.Y:
+                    self.valid_mask[x, y] = True  # 유효한 격자 위치는 True로 표시
+        print(f'valid grid: {self.valid_mask.to(torch.int)}')
+        print(f'sample shape: {self.__getitem__(0)['demands'].shape}')
+        print(f'sample: {self.__getitem__(0)['demands']}')
+        print(f'sample: {self.__getitem__(0)['labels']}')
+            
+            
     def __len__(self):
         return (self.T - self.time_step) * self.X * self.Y
 
@@ -90,6 +108,7 @@ class DMVSTDataset(Dataset):
             'demands': demand_seq,  # (time_step, 7, 7)
             'labels': label,  # scalar,
             'temporal_features': self.temporal_features[t_idx:t_idx + self.time_step],  # (time_step, num_features)
+            'valid': self.valid_mask[x_idx, y_idx],  # 해당 격자가 유효한지 여부
             'node_id': x_idx * self.Y + y_idx  # unique node id
         }
         
@@ -97,11 +116,13 @@ def collate_fn(batch):
     demands = torch.stack([item['demands'] for item in batch], dim=0)  # (B, 1, time_step, 7, 7)
     labels = torch.stack([item['labels'] for item in batch], dim=0)  # (B,)
     temporal_features = torch.stack([item['temporal_features'] for item in batch], dim=0)  # (B, time_step, num_features)
+    valid_mask = torch.tensor([item['valid'] for item in batch], dtype=torch.bool)  # (B,)
     node_ids = torch.tensor([item['node_id'] for item in batch], dtype=torch.long)  # (B,)
 
     return {
         'demands': demands,
         'labels': labels,
         'temporal_features': temporal_features,
+        'valid_mask': valid_mask,
         'node_ids': node_ids
     }
