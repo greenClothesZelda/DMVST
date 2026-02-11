@@ -86,10 +86,10 @@ class DMVSTDataset(Dataset):
                 x, y = cell
                 if 0 <= x < self.X and 0 <= y < self.Y:
                     self.valid_mask[x, y] = True  # 유효한 격자 위치는 True로 표시
-        print(f'valid grid: {self.valid_mask.to(torch.int)}')
-        print(f'sample shape: {self.__getitem__(0)['demands'].shape}')
-        print(f'sample: {self.__getitem__(0)['demands']}')
-        print(f'sample: {self.__getitem__(0)['labels']}')
+        # print(f'valid grid: {self.valid_mask.to(torch.int)}')
+        # print(f'sample shape: {self.__getitem__(0)['demands'].shape}')
+        # print(f'sample: {self.__getitem__(0)['demands']}')
+        # print(f'sample: {self.__getitem__(0)['labels']}')
             
             
     def __len__(self):
