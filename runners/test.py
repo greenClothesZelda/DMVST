@@ -36,7 +36,7 @@ def test_loop(model, test_dataset, output_dir, device, k):
 
     mae = F.l1_loss(all_predictions, all_labels).item()
     mape = torch.mean(torch.abs((all_labels - all_predictions) / (all_labels + 1))).item() * 100
-
+    rmse = torch.sqrt(F.mse_loss(all_predictions, all_labels)).item()
     result_df = pd.DataFrame(result)
     result_df.to_csv(f"{output_dir}/test_results.csv", index=False)
     visualize_predictions(f"{output_dir}/test_results.csv", num_nodes=test_dataset.dataset.X * test_dataset.dataset.Y, output_dir=output_dir)
@@ -46,6 +46,7 @@ def test_loop(model, test_dataset, output_dir, device, k):
     return {
         'MAE': mae,
         'MAPE': mape,
+        'RMSE': rmse,
         f'Top{k}_MAE': topk_mae,
         f'Top{k}_MAPE': topk_mape
     }

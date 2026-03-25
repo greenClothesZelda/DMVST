@@ -15,10 +15,10 @@ log = logging.getLogger(__name__)
 if not hasattr(np, 'int'):
     np.int = int
 
-def line(grid_size, dimension=64, walk_length=40, walk_num=10, negative=5, batch_size=100, alpha=0.025, order=2):
-    root = Path('./data/processed')
-    log.info(f"Loading LINE embeddings from graph CSV for grid size: {grid_size}")
-    df = pd.read_csv(root / f'dmvst_graph_edges_{grid_size}.csv')
+def line(graph_path, dimension=64, walk_length=40, walk_num=10, negative=5, batch_size=100, alpha=0.025, order=2):
+    graph_path = Path(graph_path)
+    log.info(f"Loading LINE embeddings from graph CSV: {graph_path}")
+    df = pd.read_csv(graph_path)
     edges = df[['u', 'v', 'w']].values
     nodes = set()
     for u, v, w in edges:
@@ -80,7 +80,7 @@ class LocalCNN(nn.Module):
 
 
 class DMVST(nn.Module):
-    def __init__(self, demand_embedding_dim, temporal_embedding_dim, context_embedding_dim, num_temporal_features, Local_cnn, LSTM, Line, grid_size, loss_fn=None):
+    def __init__(self, demand_embedding_dim, temporal_embedding_dim, context_embedding_dim, num_temporal_features, Local_cnn, LSTM, Line, grid_size, loss_fn=None, line_graph_path=None):
         super().__init__()
 
         self.demand_embedding_dim = demand_embedding_dim
@@ -89,7 +89,8 @@ class DMVST(nn.Module):
 
         self.temporal_layer = nn.Linear(num_temporal_features, temporal_embedding_dim)
         self.local_cnn = LocalCNN(**Local_cnn, embedding_dim=demand_embedding_dim)
-        line_embeddings = line(grid_size, **Line)
+        graph_path = line_graph_path or Path('./data/processed') / f'dmvst_graph_edges_{grid_size}.csv'
+        line_embeddings = line(graph_path, **Line)
         if isinstance(line_embeddings, np.ndarray):
             line_embeddings = torch.from_numpy(line_embeddings).float()
         else:
@@ -141,4 +142,3 @@ class DMVST(nn.Module):
             loss = self.loss_fn(predictions, labels)
             outputs['loss'] = loss.unsqueeze(0)
         return outputs
-            

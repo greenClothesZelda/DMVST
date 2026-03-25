@@ -44,6 +44,7 @@ def run(config):
     dataset = DMVSTDataset(**config.dataset)
     dataset_size = len(dataset)
     train_size = int(dataset_size * config.train_split)
+    line_graph_path = dataset.get_train_graph_path(train_size)
 
     criterion = DMVSTLoss(
         **config.criterion
@@ -51,7 +52,8 @@ def run(config):
 
     model = DMVST(
         **config.model,
-        loss_fn=criterion
+        loss_fn=criterion,
+        line_graph_path=line_graph_path
     )
 
     args = TrainingArguments(

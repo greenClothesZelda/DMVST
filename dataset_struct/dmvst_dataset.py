@@ -30,7 +30,7 @@ def dtw_distance(s1, s2):
 
     return np.sqrt(dtw_matrix[n, m])
 
-def make_graph(grid, grid_size):
+def make_graph(grid, output_path):
     T, X, Y = grid.shape
     num_nodes = X * Y
     grid = grid.reshape(T, num_nodes)
@@ -40,10 +40,10 @@ def make_graph(grid, grid_size):
             dist = dtw_distance(grid[:, i], grid[:, j])
             edges.append({'u': i, 'v': j, 'w': dist})
             edges.append({'u': j, 'v': i, 'w': dist})
-    root = Path('./data/processed')
-    root.mkdir(parents=True, exist_ok=True)
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     df = pd.DataFrame(edges)
-    df.to_csv(root / f'dmvst_graph_edges_{grid_size}.csv', index=False)
+    df.to_csv(output_path, index=False)
             
 
 # T, (X, Y) 4000, 13, 13
@@ -51,17 +51,14 @@ class DMVSTDataset(Dataset):
     def __init__(self, time_step, patch_size=7, grid_size=9500, target_columns=['강수량(mm)', '기온(°C)', '습도(%)', '적설(cm)']):
         root_path = Path('./data/raw')
         demands = np.load(root_path / f'grid({grid_size}).npy')  # (T, X, Y)
-
-        if not (Path(f"data/processed/dmvst_graph_edges_{grid_size}.csv")).exists():
-            make_graph(demands, grid_size)
-
-        demands = torch.from_numpy(demands) # (T, X, Y)
+        demands = torch.from_numpy(demands).to(torch.float32) # (T, X, Y)
+        self.raw_demands = demands
         self.T, self.X, self.Y = demands.shape
+        self.grid_size = grid_size
+        self.num_nodes = self.X * self.Y
         padding = (patch_size // 2, patch_size // 2, patch_size // 2, patch_size // 2)
         self.patch_size = patch_size
-        self.demands = F.pad(demands, padding, mode='constant', value=0)
-        self.demands = self.demands.to(torch.float32)
-        # print(f"Loaded demands with shape: {self.demands.shape}")
+        self.demands = F.pad(self.raw_demands, padding, mode='constant', value=0)
         self.time_step = time_step
 
         df = pd.read_csv(root_path / 'meteorological_data.csv', encoding='cp949')
@@ -69,22 +66,35 @@ class DMVSTDataset(Dataset):
         self.temporal_features = torch.tensor(df_filled[target_columns].values, dtype=torch.float32)  # (T, num_features)
         log.info(f'total data length: {self.__len__()}')
         
-        expected_nodes = self.X * self.Y
+        expected_nodes = self.num_nodes
         log.info(f"Dataset Info: X={self.X}, Y={self.Y}, Total Nodes(Max ID)={expected_nodes}")
         
 
 
     def __len__(self):
-        return (self.T - self.time_step) * self.X * self.Y
+        return (self.T - self.time_step) * self.num_nodes
+
+    def get_train_graph_path(self, num_samples: int):
+        if num_samples <= 0 or num_samples > len(self):
+            raise ValueError(f"num_samples must be in [1, {len(self)}], got {num_samples}")
+
+        train_label_steps = (num_samples + self.num_nodes - 1) // self.num_nodes
+        raw_steps = min(self.T, train_label_steps + self.time_step)
+        graph_path = Path('data/processed') / f'dmvst_graph_edges_{self.grid_size}_train_{raw_steps}.csv'
+
+        if not graph_path.exists():
+            make_graph(self.raw_demands[:raw_steps].numpy(), graph_path)
+
+        return graph_path
 
     def __getitem__(self, idx:int):
-        t_idx = idx // (self.X * self.Y)
-        xy_idx = idx % (self.X * self.Y)
+        t_idx = idx // self.num_nodes
+        xy_idx = idx % self.num_nodes
         x_idx = xy_idx // self.Y
         y_idx = xy_idx % self.Y
 
         demand_seq = self.demands[t_idx:t_idx + self.time_step, x_idx:x_idx + self.patch_size, y_idx:y_idx + self.patch_size]
-        label = self.demands[t_idx + self.time_step, x_idx + self.patch_size // 2, y_idx + self.patch_size // 2]
+        label = self.raw_demands[t_idx + self.time_step, x_idx, y_idx]
 
         return {
             'demands': demand_seq,  # (time_step, 7, 7)
