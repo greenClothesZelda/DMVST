@@ -1,5 +1,3 @@
-
-from cProfile import label
 from dataset_struct.dmvst_dataset import collate_fn
 
 import torch
@@ -21,8 +19,9 @@ def test_loop(model, test_dataset, output_dir, device, k):
         demands = batch['demands'].to(device)
         temporal_features = batch['temporal_features'].to(device)
         node_ids = batch['node_ids'].to(device)
+        sample_idx = batch['sample_idx'].to(device)
         labels = batch['labels'].to(device)
-        outputs = model.predict(demands, temporal_features, node_ids)
+        outputs = model.predict(demands, temporal_features, node_ids, sample_idx)
         outputs = torch.clamp(outputs, min=0.0)
         all_predictions.append(outputs.cpu())
         all_labels.append(labels.cpu())

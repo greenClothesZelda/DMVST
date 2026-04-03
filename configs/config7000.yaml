@@ -33,6 +33,9 @@ model:
     alpha: 0.025
     order: 2
 
+  IRModule:
+    k: 20
+
   demand_embedding_dim: 16
   temporal_embedding_dim: 8
   context_embedding_dim: 8
@@ -42,7 +45,7 @@ model:
 train:
   per_device_train_batch_size: 2048
   per_device_eval_batch_size: 1024
-  num_train_epochs: 30
+  num_train_epochs: 60
   remove_unused_columns: false
   save_strategy: epoch
   save_total_limit: 1
@@ -54,13 +57,13 @@ train:
   eval_strategy: epoch
 
   load_best_model_at_end: true
-  metric_for_best_model: loss
+  metric_for_best_model: evaluater
   greater_is_better: false
   disable_tqdm: false
   
 callbacks:
   early_stopping:
-    early_stopping_patience: 3
+    early_stopping_patience: 5
 
 test:
   k: 50

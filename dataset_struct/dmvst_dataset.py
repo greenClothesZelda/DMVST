@@ -11,7 +11,7 @@ import logging
 import tqdm
 log = logging.getLogger(__name__)
 
-from numba import njit, prange
+from numba import njit
 
 @njit(fastmath=True)
 def dtw_distance(s1, s2):
@@ -100,7 +100,8 @@ class DMVSTDataset(Dataset):
             'demands': demand_seq,  # (time_step, 7, 7)
             'labels': label,  # scalar,
             'temporal_features': self.temporal_features[t_idx:t_idx + self.time_step],  # (time_step, num_features)
-            'node_id': x_idx * self.Y + y_idx  # unique node id
+            'node_id': x_idx * self.Y + y_idx,  # unique node id
+            'sample_idx': idx
         }
         
 def collate_fn(batch):
@@ -108,10 +109,12 @@ def collate_fn(batch):
     labels = torch.stack([item['labels'] for item in batch], dim=0)  # (B,)
     temporal_features = torch.stack([item['temporal_features'] for item in batch], dim=0)  # (B, time_step, num_features)
     node_ids = torch.tensor([item['node_id'] for item in batch], dtype=torch.long)  # (B,)
+    sample_idx = torch.tensor([item['sample_idx'] for item in batch], dtype=torch.long)  # (B,)
 
     return {
         'demands': demands,
         'labels': labels,
         'temporal_features': temporal_features,
-        'node_ids': node_ids
+        'node_ids': node_ids,
+        'sample_idx': sample_idx
     }

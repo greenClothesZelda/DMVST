@@ -33,6 +33,9 @@ model:
     alpha: 0.025
     order: 2
 
+  IRModule:
+    k: 20
+
   demand_embedding_dim: 16
   temporal_embedding_dim: 8
   context_embedding_dim: 8
