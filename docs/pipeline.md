@@ -21,15 +21,16 @@
 
 1. `DMVSTDataset(**config.dataset)` 생성
 2. `dataset_size = len(dataset)` 계산
-3. `train_end`를 `num_nodes` 배수로 맞춰 train/test 경계 정렬
+3. `train_end`, `valid_end`를 `num_nodes` 배수로 맞춰 train/valid/test 경계 정렬
 4. `warmup_steps = model.IRModule.k * dataset.num_nodes`
 5. `dataset.get_train_graph_path(train_end)`로 train prefix 전용 LINE graph csv 준비
 6. `IRModule(dataset, device, k)` 생성
 7. `DMVST(..., line_graph_path=..., ir_module=...)` 생성
 8. `train_dataset = Subset(dataset, range(warmup_steps, train_end))`
-9. `eval_dataset = Subset(dataset, range(train_end, dataset_size))`
-10. Hugging Face `Trainer`로 학습
-11. `test_loop(...)`로 평가 및 결과 저장
+9. `valid_dataset = Subset(dataset, range(train_end, valid_end))`
+10. Hugging Face `Trainer`로 학습 및 validation metric 계산
+11. `test_dataset = Subset(dataset, range(valid_end, dataset_size))`
+12. `test_loop(...)`로 최종 test 평가 및 결과 저장
 
 중요한 점은 retrieval과 LINE이 모두 train 정보만 보도록 제약된다는 것입니다.
 
@@ -423,6 +424,9 @@ loss = term1 + gamma * term2
 `train_end`
 : train 종료 index. `num_nodes` 배수로 내림해서 시간 경계 정렬
 
+`valid_end`
+: validation 종료 index. `num_nodes` 배수로 내림해서 시간 경계 정렬
+
 `ir_config`
 : `config.model.IRModule`
 
@@ -432,18 +436,25 @@ loss = term1 + gamma * term2
 `train_indices`
 : `[warmup_steps, train_end)`
 
-`eval_indices`
-: `[train_end, dataset_size)`
+`valid_indices`
+: `[train_end, valid_end)`
+
+`test_indices`
+: `[valid_end, dataset_size)`
 
 디버깅 포인트:
 
 - `train_end <= warmup_steps`이면 train sample이 사라지므로 바로 `ValueError`를 냅니다.
-- `train_split`이 작거나 `IRModule.k`가 너무 크면 이 조건에 걸립니다.
+- `valid_end <= train_end`이면 valid sample이 사라집니다.
+- `valid_end >= dataset_size`이면 test sample이 사라집니다.
+- `split.train_ratio`가 작거나 `IRModule.k`가 너무 크면 첫 조건에 걸립니다.
 - `remove_unused_columns=false`가 꺼지면 `sample_idx`가 Trainer에서 drop될 수 있으므로 유지해야 합니다.
 
 ## Evaluation
 
 코드는 [test.py](/home/jinsu/PycharmProjects/DMVST/runners/test.py)에 있습니다.
+
+Hugging Face `Trainer`의 `compute_metrics`는 validation split에서 계산됩니다. 아래 `test_loop`는 학습 종료 후 별도 test split에만 적용됩니다.
 
 ### test_loop
 

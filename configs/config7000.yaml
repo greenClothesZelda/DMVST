@@ -6,7 +6,10 @@ dataset:
   patch_size: 7
   grid_size: 7000
 
-train_split: 0.8
+split:
+  train_ratio: 0.7
+  valid_ratio: 0.1
+  test_ratio: 0.2
 
 criterion:
   gamma: 1.0
@@ -43,7 +46,7 @@ model:
   grid_size: ${dataset.grid_size}
 
 train:
-  per_device_train_batch_size: 2048
+  per_device_train_batch_size: 128
   per_device_eval_batch_size: 1024
   num_train_epochs: 60
   remove_unused_columns: false
@@ -57,13 +60,13 @@ train:
   eval_strategy: epoch
 
   load_best_model_at_end: true
-  metric_for_best_model: evaluater
+  metric_for_best_model: rmse
   greater_is_better: false
   disable_tqdm: false
   
 callbacks:
   early_stopping:
-    early_stopping_patience: 5
+    early_stopping_patience: 60
 
 test:
   k: 50

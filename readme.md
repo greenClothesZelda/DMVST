@@ -41,13 +41,16 @@
 
 학습 split은 `main.py`에서 다음 순서로 나뉩니다.
 
-- `train_end = floor(train_split * len(dataset) / num_nodes) * num_nodes`
+- `train_end = floor(split.train_ratio * len(dataset) / num_nodes) * num_nodes`
+- `valid_end = floor((split.train_ratio + split.valid_ratio) * len(dataset) / num_nodes) * num_nodes`
 - `warmup_steps = model.IRModule.k * num_nodes`
 - retrieval-only prefix: `[0, warmup_steps)`
 - train: `[warmup_steps, train_end)`
-- eval/test: `[train_end, len(dataset))`
+- valid: `[train_end, valid_end)`
+- test: `[valid_end, len(dataset))`
 
 앞의 `warmup_steps` 구간은 학습에는 사용하지 않고 retrieval candidate prefix 확보용으로만 남깁니다.
+`Trainer.compute_metrics`는 valid split에서 계산되고, `test_loop`는 마지막 test split에만 적용됩니다.
 
 ## 실행 방법
 
@@ -77,8 +80,14 @@ python main.py --config-name config7000
 `test.k`
 : 평가 시 상위 수요 node metric 계산용 top-k
 
-`train_split`
+`split.train_ratio`
 : 전체 sample 중 train 종료 위치 비율
+
+`split.valid_ratio`
+: validation 구간 비율. `compute_metrics`와 early stopping 기준 eval에 사용됩니다.
+
+`split.test_ratio`
+: 최종 test 구간 비율
 
 ## 출력
 

@@ -6,7 +6,10 @@ dataset:
   patch_size: 7
   grid_size: 9500
 
-train_split: 0.8
+split:
+  train_ratio: 0.7
+  valid_ratio: 0.1
+  test_ratio: 0.2
 
 criterion:
   gamma: 0.1

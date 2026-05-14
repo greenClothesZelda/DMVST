@@ -78,6 +78,35 @@ def resolve_best_model_metric(train_config):
     train_config.greater_is_better = BEST_MODEL_METRIC_DIRECTIONS[metric_key]
     return metric_key
 
+
+def resolve_split_boundaries(split_config, dataset_size, num_nodes, warmup_steps):
+    train_ratio = float(split_config.train_ratio)
+    valid_ratio = float(split_config.valid_ratio)
+    test_ratio = float(split_config.test_ratio)
+    ratio_sum = train_ratio + valid_ratio + test_ratio
+
+    if abs(ratio_sum - 1.0) > 1e-6:
+        raise ValueError(
+            f"split ratios must sum to 1.0, got {ratio_sum:.6f} "
+            f"(train={train_ratio}, valid={valid_ratio}, test={test_ratio})."
+        )
+
+    train_end = (int(dataset_size * train_ratio) // num_nodes) * num_nodes
+    valid_end = (int(dataset_size * (train_ratio + valid_ratio)) // num_nodes) * num_nodes
+
+    if train_end <= warmup_steps:
+        raise ValueError(f"train_end ({train_end}) must be greater than warmup_steps ({warmup_steps}).")
+    if valid_end <= train_end:
+        raise ValueError(
+            f"valid_end ({valid_end}) must be greater than train_end ({train_end}). "
+            "Increase split.valid_ratio or dataset size."
+        )
+    if valid_end >= dataset_size:
+        raise ValueError(f"valid_end ({valid_end}) must be smaller than dataset length ({dataset_size}).")
+
+    return train_end, valid_end
+
+
 def set_seed(seed):
     import numpy as np
     import random
@@ -101,15 +130,16 @@ def run(config):
     # 데이터셋 및 데이터로더 설정
     dataset = DMVSTDataset(**config.dataset)
     dataset_size = len(dataset)
-    train_end = (int(dataset_size * config.train_split) // dataset.num_nodes) * dataset.num_nodes
 
     ir_config = config.model.get('IRModule')
     warmup_steps = ir_config.k * dataset.num_nodes if ir_config is not None else 0
 
-    if train_end <= warmup_steps:
-        raise ValueError(f"train_end ({train_end}) must be greater than warmup_steps ({warmup_steps}).")
-    if train_end >= dataset_size:
-        raise ValueError(f"train_end ({train_end}) must be smaller than dataset length ({dataset_size}).")
+    train_end, valid_end = resolve_split_boundaries(
+        config.split,
+        dataset_size=dataset_size,
+        num_nodes=dataset.num_nodes,
+        warmup_steps=warmup_steps
+    )
 
     line_graph_path = dataset.get_train_graph_path(train_end)
 
@@ -132,13 +162,15 @@ def run(config):
     )
 
     train_indices = range(warmup_steps, train_end)
-    eval_indices = range(train_end, dataset_size)
+    valid_indices = range(train_end, valid_end)
+    test_indices = range(valid_end, dataset_size)
 
     log.info(
-        "Dataset sizes - RetrievalOnly: %s, Train: %s, Eval/Test: %s",
+        "Dataset sizes - RetrievalOnly: %s, Train: %s, Valid: %s, Test: %s",
         warmup_steps,
         len(train_indices),
-        len(eval_indices)
+        len(valid_indices),
+        len(test_indices)
     )
 
     args = TrainingArguments(
@@ -159,14 +191,14 @@ def run(config):
         model=model,
         args=args,
         train_dataset=Subset(dataset, train_indices),
-        eval_dataset=Subset(dataset, eval_indices),
+        eval_dataset=Subset(dataset, valid_indices),
         data_collator=collate_fn,
         compute_metrics=compute_metrics,
         callbacks=[EarlyStoppingCallback(**config.callbacks.early_stopping)]
     )
     trainer.train()
     
-    test_results = test_loop(model, Subset(dataset, eval_indices), output_dir, device, **config.test)
+    test_results = test_loop(model, Subset(dataset, test_indices), output_dir, device, **config.test)
     results.append(test_results)
 
 if __name__ == "__main__":

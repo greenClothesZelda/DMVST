@@ -162,6 +162,9 @@ class LocalCNN(nn.Module):
     def __init__(self, num_filters, num_cnn_layers, kernel_size, neighborhood_size, embedding_dim):
         super().__init__()
         self.convs = nn.ModuleList()
+        self.neighborhood_size = neighborhood_size
+        self.mid_point = neighborhood_size // 2
+        print(f'neighborhood_size: {neighborhood_size}, mid_point: {self.mid_point}')
         channels = 1
         padding = kernel_size // 2
         for _ in range(num_cnn_layers):
@@ -171,14 +174,18 @@ class LocalCNN(nn.Module):
             self.convs.append(nn.ReLU())
             channels = out_channels
         self.flatten = nn.Flatten()
-        self.embedding_layer = nn.Linear(neighborhood_size * neighborhood_size * channels, embedding_dim)
+        self.embedding_layer = nn.Linear(channels, embedding_dim)
 
     def forward(self, x):
         batch_size, time_step, width, height = x.size()
         x = x.view(batch_size * time_step, 1, width, height)
         for conv in self.convs:
             x = conv(x)
+        #print(f"LocalCNN output shape before flattening: {x.shape}")
+        #x = x[:, :, self.mid_point:self.mid_point+1, self.mid_point:self.mid_point+1]
+        #print(f"LocalCNN output shape after neighborhood pooling: {x.shape}")
         x = self.flatten(x)
+        #print(f"LocalCNN output shape before embedding: {x.shape}")
         x = self.embedding_layer(x)
         x = x.view(batch_size, time_step, -1)
         return x
@@ -242,7 +249,8 @@ class DMVST(nn.Module):
             temporal_emb = torch.zeros(batch_size, time_step, self.temporal_embedding_dim, device=demands.device)
 
         if node_ids is not None:
-            context_emb = self.context_embedding_layer(self.line_embeddings[node_ids].to(demands.device))
+            #context_emb = self.context_embedding_layer(self.line_embeddings[node_ids].to(demands.device))
+            context_emb = torch.zeros(batch_size, self.context_embedding_dim, device=demands.device)
         else:
             context_emb = torch.zeros(batch_size, self.context_embedding_dim, device=demands.device)
 
@@ -258,7 +266,7 @@ class DMVST(nn.Module):
             ir_out, _ = self.ir_module(demands, node_ids, sample_idx)
             lambda_input = torch.cat([final_features, ir_out.unsqueeze(-1)], dim=-1)
             lambda_weight = torch.sigmoid(self.lambda_layer(lambda_input)).squeeze(-1)
-            output = lambda_weight * output + (1.0 - lambda_weight) * ir_out
+            #output = lambda_weight * output + (1.0 - lambda_weight) * ir_out
 
         return output
 
