@@ -174,7 +174,7 @@ class LocalCNN(nn.Module):
             self.convs.append(nn.ReLU())
             channels = out_channels
         self.flatten = nn.Flatten()
-        self.embedding_layer = nn.Linear(channels, embedding_dim)
+        self.embedding_layer = nn.Linear(neighborhood_size * neighborhood_size * channels, embedding_dim)
 
     def forward(self, x):
         batch_size, time_step, width, height = x.size()
@@ -266,7 +266,7 @@ class DMVST(nn.Module):
             ir_out, _ = self.ir_module(demands, node_ids, sample_idx)
             lambda_input = torch.cat([final_features, ir_out.unsqueeze(-1)], dim=-1)
             lambda_weight = torch.sigmoid(self.lambda_layer(lambda_input)).squeeze(-1)
-            #output = lambda_weight * output + (1.0 - lambda_weight) * ir_out
+            output = lambda_weight * output + (1.0 - lambda_weight) * ir_out
 
         return output
 
