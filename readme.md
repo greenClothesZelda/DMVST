@@ -1,106 +1,47 @@
-# DMVST
+# Lambda-F: 유사도 검색을 통한 장기 기억 강화 기반 교통 수요 예측 모델
 
-현재 브랜치는 `DMVST + LINE + patch-aware IR retrieval` 구조로 동작합니다. 기본 neural forecasting branch 위에, 같은 중심 위치의 과거 patch window만 검색하는 causal retrieval branch를 추가한 형태입니다.
+### Lambda-F: Long-term Augmented Memory-Based Traffic Demand Forecasting Model via Similarity Retrieval (KCC 2026, 장려상)
 
-상세 파이프라인과 디버깅용 변수 설명은 [docs/pipeline.md](/home/jinsu/PycharmProjects/DMVST/docs/pipeline.md)에 정리했습니다.
+by 김진수, 김종익
 
-## 모델 개요
+충남대학교 인공지능학과
 
-모델은 두 경로를 합칩니다.
+## 🔎 Abstract
 
-1. Neural branch
-   `LocalCNN`으로 `(time_step, patch, patch)` 수요 patch를 임베딩하고, 기상 feature와 concat한 뒤 LSTM으로 다음 시점 중심 수요를 예측합니다.
-2. Retrieval branch
-   현재 sample의 patch window를 query로 사용하고, 같은 `node_id`의 과거 patch window만 cosine similarity로 검색해 retrieval prediction을 만듭니다.
+도시 교통 수요는 평소 완만한 저주파 흐름을 보이다가, 콘서트·행사처럼 비정기적인 사건이 발생하면 고주파 급변이 갑자기 끼어든다. 최근 관측 시퀀스만 참조하는 전통적인 모델은 이런 장기 반복 패턴을 놓치고, 반대로 고정 주기(예: 일주일 전 같은 시간)를 참조하는 모델은 비주기적인 급변을 놓친다. Lambda-F는 고정 주기 가정 대신 현재 수요 패턴과 유사한 과거 구간을 유사도 검색(retrieval)으로 찾아 선택적으로 참조하고, 이를 단기 LSTM 특징과 주파수 적응적으로 융합해 장기 기억을 반영한다. 울산 택시 수요 데이터로 검증한 결과 Moving Average, ARIMA, DMVST-Net, ST-ResNet 대비 MAPE·RMSE 모든 지표에서 최저 오차를 달성했다.
 
-최종 출력은 gate 기반 fusion입니다.
+## 💡 Why Lambda-F works?
 
-- neural output: `final_fc(final_features)`
-- retrieval output: `ir_out`
-- final output: `lambda * neural + (1 - lambda) * ir_out`
+### 1. Motivation
 
-## 핵심 특징
+최근 시퀀스만 보는 모델은 장기 패턴을, 고정 주기로 참조하는 모델은 비주기적 급변을 놓친다. 두 접근 모두 "과거의 어떤 시점을, 얼마나 반영할지"를 데이터에 맞게 정하지 못한다는 한계가 있다.
 
-- 입력 sample은 전체 grid가 아니라 중심 node 기준 local patch 하나입니다.
-- `IRModule`은 모든 지역을 검색하지 않고, 현재 sample과 같은 중심 위치의 과거 patch만 검색합니다.
-- retrieval은 causal합니다. 현재 sample보다 이전 시점만 candidate로 사용합니다.
-- `LINE` 그래프는 전체 시계열이 아니라 train split까지만 사용해 생성합니다.
-- `test.k`는 evaluation용 top-k metric이고, `model.IRModule.k`는 retrieval top-k 및 warmup 길이 기준입니다. 둘은 다른 의미입니다.
+### 2. Our Contribution
 
-## 데이터와 split
+- **선택적 장기 기억 검색 모듈**: 고정 주기 참조 없이, 현재 패턴과 유사한 과거 수요 구간을 Top-K 유사도 검색으로 찾아 정답을 유사도 가중합함으로써 비주기적인 장기 패턴까지 반영하는 retrieval 기반 장기 기억 모듈을 제안했다.
+- **주파수 적응적 단기·장기 융합**: 단기 특징(Local CNN + LSTM, 고주파 민감)과 장기 특징(retrieval, 저주파 민감)을 fusion layer(fc_pred)에서 결합하되, 입력의 주파수 성분에 따라 반영 비중이 자동으로 조절되도록 설계해 급변·피크 구간과 완만·반복 구간 모두를 하나의 모델로 대응했다.
+- **실증적 성능 우위 검증**: 울산 택시 수요 데이터에서 기존 비교군 대비 MAPE·RMSE 모두 최저치를 달성했고, 특히 저수요(한산)·고수요(혼잡) 양 극단 지역 모두에서 우위를 보여 검색 기반 장기 기억 반영이 수요 규모와 무관하게 효과적임을 입증했다.
 
-`DMVSTDataset`은 `grid(size).npy`와 `meteorological_data.csv`를 읽어 sample을 만듭니다.
+## 🖼️ Model Architecture
 
-각 sample은 다음으로 구성됩니다.
+![Lambda-F architecture](docs/images/architecture.png)
 
-- `demands`: `(time_step, patch_size, patch_size)`
-- `labels`: 다음 시점 중심 cell 수요 scalar
-- `temporal_features`: `(time_step, num_temporal_features)`
-- `node_id`: 중심 cell의 flatten index
-- `sample_idx`: dataset 전체에서의 absolute sample index
+## 📊 Results
 
-학습 split은 `main.py`에서 다음 순서로 나뉩니다.
+울산 택시 수요 데이터(2024.10–2025.3, 169개 격자 노드, 1시간 단위, 학습/검증/평가 0.7/0.1/0.2)로 Moving Average, ARIMA, DMVST-Net, ST-ResNet과 비교했다.
 
-- `train_end = floor(split.train_ratio * len(dataset) / num_nodes) * num_nodes`
-- `valid_end = floor((split.train_ratio + split.valid_ratio) * len(dataset) / num_nodes) * num_nodes`
-- `warmup_steps = model.IRModule.k * num_nodes`
-- retrieval-only prefix: `[0, warmup_steps)`
-- train: `[warmup_steps, train_end)`
-- valid: `[train_end, valid_end)`
-- test: `[valid_end, len(dataset))`
+| 모델 | MAPE (↓) | RMSE (↓) |
+|---|---|---|
+| Moving Average | 25.72 | 0.854 |
+| ARIMA | 25.21 | 0.797 |
+| DMVST-Net | 22.14 | 0.739 |
+| ST-ResNet | 19.06 | 0.742 |
+| **Lambda-F (Ours)** | **17.97** | **0.730** |
 
-앞의 `warmup_steps` 구간은 학습에는 사용하지 않고 retrieval candidate prefix 확보용으로만 남깁니다.
-`Trainer.compute_metrics`는 valid split에서 계산되고, `test_loop`는 마지막 test split에만 적용됩니다.
+Lambda-F가 MAPE·RMSE 모든 지표에서 비교군 중 최저를 기록했다. 장기 기억 검색 모듈이 없는 base 구조인 DMVST-Net 대비로는 MAPE가 약 18.8% 상대적으로 낮아졌고, 비교군 중 최고 성능이던 ST-ResNet 대비로도 MAPE를 약 5.7% 더 낮췄다.
 
-## 실행 방법
+## 📖 Paper
 
-기본 실행:
-
-```bash
-python main.py --config-name config
-```
-
-7000 grid 설정:
-
-```bash
-python main.py --config-name config7000
-```
-
-## 자주 바꾸는 인자
-
-`dataset.time_step`
-: 입력 시계열 길이
-
-`dataset.patch_size`
-: 각 sample이 보는 local patch 크기
-
-`model.IRModule.k`
-: retrieval top-k 크기. 동시에 retrieval-only warmup 길이 계산에 사용됩니다.
-
-`test.k`
-: 평가 시 상위 수요 node metric 계산용 top-k
-
-`split.train_ratio`
-: 전체 sample 중 train 종료 위치 비율
-
-`split.valid_ratio`
-: validation 구간 비율. `compute_metrics`와 early stopping 기준 eval에 사용됩니다.
-
-`split.test_ratio`
-: 최종 test 구간 비율
-
-## 출력
-
-Hydra output directory 아래에 다음이 저장됩니다.
-
-- checkpoint
-- `test_results.csv`
-- `demand_error_analysis.png`
-- `predictions_max_demand_node.png`
-- `predictions_min_demand_node.png`
-- `predictions_mid_demand_node.png`
-
-## 문서
-
-- 개요: [readme.md](/home/jinsu/PycharmProjects/DMVST/readme.md)
-- 상세 파이프라인: [docs/pipeline.md](/home/jinsu/PycharmProjects/DMVST/docs/pipeline.md)
+- 논문: [KCC_extended_v7.pdf](KCC_extended_v7.pdf)
+- 발표자료: [Lambda-F.pdf](Lambda-F.pdf)
+- 상세 파이프라인 문서: [docs/pipeline.md](docs/pipeline.md)
